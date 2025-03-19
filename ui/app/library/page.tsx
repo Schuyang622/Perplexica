@@ -94,7 +94,7 @@ const Page = () => {
                 <div className="flex flex-row items-center space-x-1 lg:space-x-1.5 text-black/70 dark:text-white/70">
                   <ClockIcon size={15} />
                   <p className="text-xs">
-                    {formatTimeDifference(new Date(), chat.createdAt)} Ago
+                    {formatTimeDifference(new Date(), new Date(chat.createdAt))} Ago
                   </p>
                 </div>
                 <DeleteChat

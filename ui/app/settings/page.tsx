@@ -793,6 +793,86 @@ const Page = () => {
                 </div>
               </div>
             </SettingsSection>
+
+            <SettingsSection title="实验性功能">
+              <div className="flex flex-col space-y-4">
+                <div className="flex flex-row items-center justify-between">
+                  <div className="flex flex-col space-y-1">
+                    <h3 className="text-black/90 dark:text-white/90">
+                      自动图片搜索
+                    </h3>
+                    <p className="text-xs text-black/70 dark:text-white/70">
+                      在您搜索时自动检索相关图片
+                    </p>
+                  </div>
+
+                  <Switch
+                    checked={automaticImageSearch}
+                    onChange={setAutomaticImageSearch}
+                    className={cn(
+                      automaticImageSearch ? 'bg-blue-600' : 'bg-light-400',
+                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        automaticImageSearch
+                          ? 'translate-x-5'
+                          : 'translate-x-0',
+                        'pointer-events-none relative inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                      )}
+                    />
+                  </Switch>
+                </div>
+
+                <div className="flex flex-row items-center justify-between">
+                  <div className="flex flex-col space-y-1">
+                    <h3 className="text-black/90 dark:text-white/90">
+                      自动视频搜索
+                    </h3>
+                    <p className="text-xs text-black/70 dark:text-white/70">
+                      在您搜索时自动检索相关视频
+                    </p>
+                  </div>
+
+                  <Switch
+                    checked={automaticVideoSearch}
+                    onChange={setAutomaticVideoSearch}
+                    className={cn(
+                      automaticVideoSearch ? 'bg-blue-600' : 'bg-light-400',
+                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        automaticVideoSearch
+                          ? 'translate-x-5'
+                          : 'translate-x-0',
+                        'pointer-events-none relative inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                      )}
+                    />
+                  </Switch>
+                </div>
+
+                <div className="flex flex-row items-center justify-between">
+                  <div className="flex flex-col space-y-1">
+                    <h3 className="text-black/90 dark:text-white/90">
+                      Focus模式管理
+                    </h3>
+                    <p className="text-xs text-black/70 dark:text-white/70">
+                      自定义和管理搜索的Focus模式
+                    </p>
+                  </div>
+
+                  <Link
+                    href="/settings/focus-modes"
+                    className="px-3 py-1.5 text-sm bg-light-secondary dark:bg-dark-secondary rounded-lg text-black/70 dark:text-white/70 hover:text-black dark:hover:text-white transition-colors"
+                  >
+                    管理
+                  </Link>
+                </div>
+              </div>
+            </SettingsSection>
           </div>
         )
       )}

@@ -1,12 +1,12 @@
 import { Check, ClipboardList } from 'lucide-react';
-import { Message } from '../ChatWindow';
+import { ChatMessage } from '@/types';
 import { useState } from 'react';
 
 const Copy = ({
   message,
   initialMessage,
 }: {
-  message: Message;
+  message: ChatMessage;
   initialMessage: string;
 }) => {
   const [copied, setCopied] = useState(false);

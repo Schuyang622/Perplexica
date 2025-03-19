@@ -1,12 +1,7 @@
-FROM node:18-slim
+FROM node:18-alpine
 
-# 直接安装依赖，不尝试修改sources.list
-RUN apt-get update || (rm -rf /var/lib/apt/lists/* && apt-get update) && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    python3 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# 安装基本构建工具
+RUN apk add --no-cache python3 make g++ build-base
 
 # 创建工作目录
 WORKDIR /home/perplexica
@@ -26,4 +21,4 @@ RUN mkdir -p /home/perplexica/uploads/images
 RUN yarn install --network-timeout 600000
 RUN yarn build
 
-CMD ["yarn", "start"]
+CMD ["yarn", "start"] 

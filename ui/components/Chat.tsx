@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState } from 'react';
 import MessageInput from './MessageInput';
-import { File, Message } from './ChatWindow';
+import { ChatMessage, File } from '@/types';
 import MessageBox from './MessageBox';
 import MessageBoxLoading from './MessageBoxLoading';
 
@@ -17,7 +17,7 @@ const Chat = ({
   files,
   setFiles,
 }: {
-  messages: Message[];
+  messages: ChatMessage[];
   sendMessage: (message: string) => void;
   loading: boolean;
   messageAppeared: boolean;

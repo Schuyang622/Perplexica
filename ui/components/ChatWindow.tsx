@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Document } from '@langchain/core/documents';
 import Navbar from './Navbar';
 import Chat from './Chat';
@@ -12,302 +12,13 @@ import { getSuggestions } from '@/lib/actions';
 import { Settings } from 'lucide-react';
 import Link from 'next/link';
 import NextError from 'next/error';
-
-export type Message = {
-  messageId: string;
-  chatId: string;
-  createdAt: Date;
-  content: string;
-  role: 'user' | 'assistant';
-  suggestions?: string[];
-  sources?: Document[];
-};
-
-export interface File {
-  fileName: string;
-  fileExtension: string;
-  fileId: string;
-}
-
-const useSocket = (
-  url: string,
-  setIsWSReady: (ready: boolean) => void,
-  setError: (error: boolean) => void,
-) => {
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
-  const retryCountRef = useRef(0);
-  const isCleaningUpRef = useRef(false);
-  const MAX_RETRIES = 3;
-  const INITIAL_BACKOFF = 1000; // 1 second
-  const isConnectionErrorRef = useRef(false);
-
-  const getBackoffDelay = (retryCount: number) => {
-    return Math.min(INITIAL_BACKOFF * Math.pow(2, retryCount), 10000); // Cap at 10 seconds
-  };
-
-  useEffect(() => {
-    const connectWs = async () => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-      }
-
-      try {
-        let chatModel = localStorage.getItem('chatModel');
-        let chatModelProvider = localStorage.getItem('chatModelProvider');
-        let embeddingModel = localStorage.getItem('embeddingModel');
-        let embeddingModelProvider = localStorage.getItem(
-          'embeddingModelProvider',
-        );
-
-        const autoImageSearch = localStorage.getItem('autoImageSearch');
-        const autoVideoSearch = localStorage.getItem('autoVideoSearch');
-
-        if (!autoImageSearch) {
-          localStorage.setItem('autoImageSearch', 'true');
-        }
-
-        if (!autoVideoSearch) {
-          localStorage.setItem('autoVideoSearch', 'false');
-        }
-
-        const providers = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/models`,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          },
-        ).then(async (res) => {
-          if (!res.ok)
-            throw new Error(
-              `Failed to fetch models: ${res.status} ${res.statusText}`,
-            );
-          return res.json();
-        });
-
-        if (
-          !chatModel ||
-          !chatModelProvider ||
-          !embeddingModel ||
-          !embeddingModelProvider
-        ) {
-          if (!chatModel || !chatModelProvider) {
-            const chatModelProviders = providers.chatModelProviders;
-
-            chatModelProvider =
-              chatModelProvider || Object.keys(chatModelProviders)[0];
-
-            chatModel = Object.keys(chatModelProviders[chatModelProvider])[0];
-
-            if (
-              !chatModelProviders ||
-              Object.keys(chatModelProviders).length === 0
-            )
-              return toast.error('No chat models available');
-          }
-
-          if (!embeddingModel || !embeddingModelProvider) {
-            const embeddingModelProviders = providers.embeddingModelProviders;
-
-            if (
-              !embeddingModelProviders ||
-              Object.keys(embeddingModelProviders).length === 0
-            )
-              return toast.error('No embedding models available');
-
-            embeddingModelProvider = Object.keys(embeddingModelProviders)[0];
-            embeddingModel = Object.keys(
-              embeddingModelProviders[embeddingModelProvider],
-            )[0];
-          }
-
-          localStorage.setItem('chatModel', chatModel!);
-          localStorage.setItem('chatModelProvider', chatModelProvider);
-          localStorage.setItem('embeddingModel', embeddingModel!);
-          localStorage.setItem(
-            'embeddingModelProvider',
-            embeddingModelProvider,
-          );
-        } else {
-          const chatModelProviders = providers.chatModelProviders;
-          const embeddingModelProviders = providers.embeddingModelProviders;
-
-          if (
-            Object.keys(chatModelProviders).length > 0 &&
-            !chatModelProviders[chatModelProvider]
-          ) {
-            const chatModelProvidersKeys = Object.keys(chatModelProviders);
-            chatModelProvider =
-              chatModelProvidersKeys.find(
-                (key) => Object.keys(chatModelProviders[key]).length > 0,
-              ) || chatModelProvidersKeys[0];
-
-            localStorage.setItem('chatModelProvider', chatModelProvider);
-          }
-
-          if (
-            chatModelProvider &&
-            !chatModelProviders[chatModelProvider][chatModel]
-          ) {
-            chatModel = Object.keys(
-              chatModelProviders[
-                Object.keys(chatModelProviders[chatModelProvider]).length > 0
-                  ? chatModelProvider
-                  : Object.keys(chatModelProviders)[0]
-              ],
-            )[0];
-            localStorage.setItem('chatModel', chatModel);
-          }
-
-          if (
-            Object.keys(embeddingModelProviders).length > 0 &&
-            !embeddingModelProviders[embeddingModelProvider]
-          ) {
-            embeddingModelProvider = Object.keys(embeddingModelProviders)[0];
-            localStorage.setItem(
-              'embeddingModelProvider',
-              embeddingModelProvider,
-            );
-          }
-
-          if (
-            embeddingModelProvider &&
-            !embeddingModelProviders[embeddingModelProvider][embeddingModel]
-          ) {
-            embeddingModel = Object.keys(
-              embeddingModelProviders[embeddingModelProvider],
-            )[0];
-            localStorage.setItem('embeddingModel', embeddingModel);
-          }
-        }
-
-        const wsURL = new URL(url);
-        const searchParams = new URLSearchParams({});
-
-        searchParams.append('chatModel', chatModel!);
-        searchParams.append('chatModelProvider', chatModelProvider);
-
-        if (chatModelProvider === 'custom_openai') {
-          searchParams.append(
-            'openAIApiKey',
-            localStorage.getItem('openAIApiKey')!,
-          );
-          searchParams.append(
-            'openAIBaseURL',
-            localStorage.getItem('openAIBaseURL')!,
-          );
-        }
-
-        searchParams.append('embeddingModel', embeddingModel!);
-        searchParams.append('embeddingModelProvider', embeddingModelProvider);
-
-        wsURL.search = searchParams.toString();
-
-        const ws = new WebSocket(wsURL.toString());
-        wsRef.current = ws;
-
-        const timeoutId = setTimeout(() => {
-          if (ws.readyState !== 1) {
-            toast.error(
-              'Failed to connect to the server. Please try again later.',
-            );
-          }
-        }, 10000);
-
-        ws.addEventListener('message', (e) => {
-          const data = JSON.parse(e.data);
-          if (data.type === 'signal' && data.data === 'open') {
-            const interval = setInterval(() => {
-              if (ws.readyState === 1) {
-                setIsWSReady(true);
-                setError(false);
-                if (retryCountRef.current > 0) {
-                  toast.success('Connection restored.');
-                }
-                retryCountRef.current = 0;
-                clearInterval(interval);
-              }
-            }, 5);
-            clearTimeout(timeoutId);
-            console.debug(new Date(), 'ws:connected');
-          }
-          if (data.type === 'error') {
-            isConnectionErrorRef.current = true;
-            setError(true);
-            toast.error(data.data);
-          }
-        });
-
-        ws.onerror = () => {
-          clearTimeout(timeoutId);
-          setIsWSReady(false);
-          toast.error('WebSocket connection error.');
-        };
-
-        ws.onclose = () => {
-          clearTimeout(timeoutId);
-          setIsWSReady(false);
-          console.debug(new Date(), 'ws:disconnected');
-          if (!isCleaningUpRef.current && !isConnectionErrorRef.current) {
-            toast.error('Connection lost. Attempting to reconnect...');
-            attemptReconnect();
-          }
-        };
-      } catch (error) {
-        console.debug(new Date(), 'ws:error', error);
-        setIsWSReady(false);
-        attemptReconnect();
-      }
-    };
-
-    const attemptReconnect = () => {
-      retryCountRef.current += 1;
-
-      if (retryCountRef.current > MAX_RETRIES) {
-        console.debug(new Date(), 'ws:max_retries');
-        setError(true);
-        toast.error(
-          'Unable to connect to server after multiple attempts. Please refresh the page to try again.',
-        );
-        return;
-      }
-
-      const backoffDelay = getBackoffDelay(retryCountRef.current);
-      console.debug(
-        new Date(),
-        `ws:retry attempt=${retryCountRef.current}/${MAX_RETRIES} delay=${backoffDelay}ms`,
-      );
-
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connectWs();
-      }, backoffDelay);
-    };
-
-    connectWs();
-
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-        isCleaningUpRef.current = true;
-        console.debug(new Date(), 'ws:cleanup');
-      }
-    };
-  }, [url, setIsWSReady, setError]);
-
-  return wsRef.current;
-};
+import { useSocket } from '@/lib/socket';
+import { chatWithCache } from '@/lib/pythonApi';
+import { ChatMessage, HistoryEntry, File } from '@/types';
 
 const loadMessages = async (
   chatId: string,
-  setMessages: (messages: Message[]) => void,
+  setMessages: (messages: ChatMessage[]) => void,
   setIsMessagesLoaded: (loaded: boolean) => void,
   setChatHistory: (history: [string, string][]) => void,
   setFocusMode: (mode: string) => void,
@@ -338,7 +49,7 @@ const loadMessages = async (
       ...msg,
       ...JSON.parse(msg.metadata),
     };
-  }) as Message[];
+  }) as ChatMessage[];
 
   setMessages(messages);
 
@@ -378,7 +89,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
 
   const [isWSReady, setIsWSReady] = useState(false);
   const ws = useSocket(
-    process.env.NEXT_PUBLIC_WS_URL!,
+    `${process.env.NEXT_PUBLIC_API_URL?.replace(/^http/, 'ws') || ''}/ws`,
     setIsWSReady,
     setHasError,
   );
@@ -387,7 +98,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
   const [messageAppeared, setMessageAppeared] = useState(false);
 
   const [chatHistory, setChatHistory] = useState<[string, string][]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const [files, setFiles] = useState<File[]>([]);
   const [fileIds, setFileIds] = useState<string[]>([]);
@@ -401,7 +112,18 @@ const ChatWindow = ({ id }: { id?: string }) => {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  const [useCacheApi, setUseCacheApi] = useState(true);
+  const [autoImageSearch, setAutoImageSearch] = useState(false);
+  const [autoVideoSearch, setAutoVideoSearch] = useState(false);
+
   useEffect(() => {
+    // 从localStorage加载自动视频和图片搜索的设置
+    const savedAutoImageSearch = localStorage.getItem('autoImageSearch') === 'true';
+    const savedAutoVideoSearch = localStorage.getItem('autoVideoSearch') === 'true';
+    
+    setAutoImageSearch(savedAutoImageSearch);
+    setAutoVideoSearch(savedAutoVideoSearch);
+    
     if (
       chatId &&
       !newChatCreated &&
@@ -436,7 +158,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const messagesRef = useRef<Message[]>([]);
+  const messagesRef = useRef<ChatMessage[]>([]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -453,11 +175,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
 
   const sendMessage = async (message: string, messageId?: string) => {
     if (loading) return;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      toast.error('Cannot send message while disconnected');
-      return;
-    }
-
+    
     setLoading(true);
     setMessageAppeared(false);
 
@@ -466,6 +184,94 @@ const ChatWindow = ({ id }: { id?: string }) => {
     let added = false;
 
     messageId = messageId ?? crypto.randomBytes(7).toString('hex');
+
+    setMessages((prevMessages: ChatMessage[]) => [
+      ...prevMessages,
+      {
+        content: message,
+        messageId: messageId,
+        chatId: chatId!,
+        role: 'user',
+        createdAt: new Date(),
+      },
+    ]);
+
+    if (useCacheApi) {
+      try {
+        const response = await chatWithCache(
+          message,
+          chatHistory,
+          focusMode,
+          optimizationMode
+        );
+
+        if (response) {
+          recievedMessage = response.message;
+          sources = response.sources;
+          
+          setMessageAppeared(true);
+          
+          setMessages((prevMessages: ChatMessage[]) => [
+            ...prevMessages,
+            {
+              content: recievedMessage,
+              messageId: messageId!,
+              chatId: chatId!,
+              role: 'assistant',
+              sources: sources,
+              createdAt: new Date(),
+              cachedResponse: response.cached,
+              imageData: response.imageUrl ? {
+                success: true,
+                imageUrl: response.imageUrl,
+                downloadUrl: response.downloadUrl || response.imageUrl,
+                text: recievedMessage
+              } : undefined
+            },
+          ]);
+          
+          setChatHistory((prevHistory: [string, string][]) => [
+            ...prevHistory,
+            ['human', message],
+            ['assistant', recievedMessage],
+          ]);
+          
+          if (sources && sources.length > 0) {
+            const suggestions = await getSuggestions(messagesRef.current);
+            setMessages((prev: ChatMessage[]) =>
+              prev.map((msg: ChatMessage) => {
+                if (msg.messageId === messageId) {
+                  return { ...msg, suggestions: suggestions };
+                }
+                return msg;
+              }),
+            );
+          }
+          
+          const autoImageSearch = localStorage.getItem('autoImageSearch');
+          const autoVideoSearch = localStorage.getItem('autoVideoSearch');
+          
+          if (autoImageSearch === 'true') {
+            document.getElementById('search-images')?.click();
+          }
+          
+          if (autoVideoSearch === 'true') {
+            document.getElementById('search-videos')?.click();
+          }
+          
+          setLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.error('使用缓存API出错:', error);
+      }
+    }
+    
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      toast.error('无法连接到服务器');
+      setLoading(false);
+      return;
+    }
 
     ws.send(
       JSON.stringify({
@@ -482,17 +288,6 @@ const ChatWindow = ({ id }: { id?: string }) => {
       }),
     );
 
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      {
-        content: message,
-        messageId: messageId,
-        chatId: chatId!,
-        role: 'user',
-        createdAt: new Date(),
-      },
-    ]);
-
     const messageHandler = async (e: MessageEvent) => {
       const data = JSON.parse(e.data);
 
@@ -502,10 +297,24 @@ const ChatWindow = ({ id }: { id?: string }) => {
         return;
       }
 
+      if (data.type === 'image') {
+        setMessages((prev: ChatMessage[]) =>
+          prev.map((message: ChatMessage) => {
+            if (message.messageId === data.messageId) {
+              return { 
+                ...message, 
+                imageData: data.data
+              };
+            }
+            return message;
+          })
+        );
+      }
+
       if (data.type === 'sources') {
         sources = data.data;
         if (!added) {
-          setMessages((prevMessages) => [
+          setMessages((prevMessages: ChatMessage[]) => [
             ...prevMessages,
             {
               content: '',
@@ -523,7 +332,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
 
       if (data.type === 'message') {
         if (!added) {
-          setMessages((prevMessages) => [
+          setMessages((prevMessages: ChatMessage[]) => [
             ...prevMessages,
             {
               content: data.data,
@@ -537,8 +346,8 @@ const ChatWindow = ({ id }: { id?: string }) => {
           added = true;
         }
 
-        setMessages((prev) =>
-          prev.map((message) => {
+        setMessages((prev: ChatMessage[]) =>
+          prev.map((message: ChatMessage) => {
             if (message.messageId === data.messageId) {
               return { ...message, content: message.content + data.data };
             }
@@ -552,7 +361,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
       }
 
       if (data.type === 'messageEnd') {
-        setChatHistory((prevHistory) => [
+        setChatHistory((prevHistory: [string, string][]) => [
           ...prevHistory,
           ['human', message],
           ['assistant', recievedMessage],
@@ -570,8 +379,8 @@ const ChatWindow = ({ id }: { id?: string }) => {
           !lastMsg.suggestions
         ) {
           const suggestions = await getSuggestions(messagesRef.current);
-          setMessages((prev) =>
-            prev.map((msg) => {
+          setMessages((prev: ChatMessage[]) =>
+            prev.map((msg: ChatMessage) => {
               if (msg.messageId === lastMsg.messageId) {
                 return { ...msg, suggestions: suggestions };
               }
@@ -603,10 +412,10 @@ const ChatWindow = ({ id }: { id?: string }) => {
 
     const message = messages[index - 1];
 
-    setMessages((prev) => {
+    setMessages((prev: ChatMessage[]) => {
       return [...prev.slice(0, messages.length > 2 ? index - 1 : 0)];
     });
-    setChatHistory((prev) => {
+    setChatHistory((prev: [string, string][]) => {
       return [...prev.slice(0, messages.length > 2 ? index - 1 : 0)];
     });
 
@@ -619,6 +428,18 @@ const ChatWindow = ({ id }: { id?: string }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws?.readyState, isReady, initialMessage, isWSReady]);
+
+  const handleAutoImageSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.checked;
+    setAutoImageSearch(value);
+    localStorage.setItem('autoImageSearch', value.toString());
+  };
+
+  const handleAutoVideoSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.checked;
+    setAutoVideoSearch(value);
+    localStorage.setItem('autoVideoSearch', value.toString());
+  };
 
   if (hasError) {
     return (
@@ -668,6 +489,12 @@ const ChatWindow = ({ id }: { id?: string }) => {
             setFileIds={setFileIds}
             files={files}
             setFiles={setFiles}
+            useCacheApi={useCacheApi}
+            setUseCacheApi={setUseCacheApi}
+            autoImageSearch={autoImageSearch}
+            handleAutoImageSearchChange={handleAutoImageSearchChange}
+            autoVideoSearch={autoVideoSearch}
+            handleAutoVideoSearchChange={handleAutoVideoSearchChange}
           />
         )}
       </div>

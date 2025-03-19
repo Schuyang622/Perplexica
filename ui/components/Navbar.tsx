@@ -1,5 +1,5 @@
 import { Clock, Edit, Share, Trash } from 'lucide-react';
-import { Message } from './ChatWindow';
+import { ChatMessage } from '@/types';
 import { useEffect, useState } from 'react';
 import { formatTimeDifference } from '@/lib/utils';
 import DeleteChat from './DeleteChat';
@@ -8,7 +8,7 @@ const Navbar = ({
   chatId,
   messages,
 }: {
-  messages: Message[];
+  messages: ChatMessage[];
   chatId: string;
 }) => {
   const [title, setTitle] = useState<string>('');
@@ -21,28 +21,32 @@ const Navbar = ({
           ? `${messages[0].content.substring(0, 20).trim()}...`
           : messages[0].content;
       setTitle(newTitle);
-      const newTimeAgo = formatTimeDifference(
-        new Date(),
-        messages[0].createdAt,
-      );
-      setTimeAgo(newTimeAgo);
+      
+      if (messages[0].createdAt) {
+        const newTimeAgo = formatTimeDifference(
+          new Date(),
+          messages[0].createdAt
+        );
+        setTimeAgo(newTimeAgo);
+      } else {
+        setTimeAgo('just now');
+      }
     }
   }, [messages]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
-      if (messages.length > 0) {
+      if (messages.length > 0 && messages[0].createdAt) {
         const newTimeAgo = formatTimeDifference(
           new Date(),
-          messages[0].createdAt,
+          messages[0].createdAt
         );
         setTimeAgo(newTimeAgo);
       }
-    }, 1000);
+    }, 60000);
 
     return () => clearInterval(intervalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [messages]);
 
   return (
     <div className="fixed z-40 top-0 left-0 right-0 px-4 lg:pl-[104px] lg:pr-6 lg:px-8 flex flex-row items-center justify-between w-full py-4 text-sm text-black dark:text-white/70 border-b bg-light-primary dark:bg-dark-primary border-light-100 dark:border-dark-200">

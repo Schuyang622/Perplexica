@@ -5,7 +5,7 @@ import CopilotToggle from './MessageInputActions/Copilot';
 import Focus from './MessageInputActions/Focus';
 import Optimization from './MessageInputActions/Optimization';
 import Attach from './MessageInputActions/Attach';
-import { File } from './ChatWindow';
+import { File } from '@/types';
 
 const EmptyChatMessageInput = ({
   sendMessage,

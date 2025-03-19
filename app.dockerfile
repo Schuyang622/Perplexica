@@ -1,15 +1,24 @@
-FROM node:20.18.0-alpine
+FROM node:18-slim AS base
 
-ARG NEXT_PUBLIC_WS_URL=ws://127.0.0.1:3001
-ARG NEXT_PUBLIC_API_URL=http://127.0.0.1:3001/api
-ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+FROM base AS deps
+WORKDIR /app
 
-WORKDIR /home/perplexica
+COPY ui/package.json ui/yarn.lock ./
+RUN yarn install --frozen-lockfile --network-timeout 600000
 
-COPY ui /home/perplexica/
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY ui ./
 
-RUN yarn install --frozen-lockfile
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL
+ARG NEXT_PUBLIC_PYTHON_API_URL=http://perplexica-python-cache:8000
+
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_PYTHON_API_URL=$NEXT_PUBLIC_PYTHON_API_URL
+
 RUN yarn build
 
 CMD ["yarn", "start"]

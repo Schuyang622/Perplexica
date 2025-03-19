@@ -9,15 +9,53 @@ services:
       - perplexica-network
     restart: unless-stopped
 
+  redis:
+    image: redis:alpine
+    ports:
+      - 6379:6379
+    volumes:
+      - redis-data:/data
+    networks:
+      - perplexica-network
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning --maxmemory 100mb --maxmemory-policy allkeys-lru
+
+  perplexica-mcp:
+    build:
+      context: .
+      dockerfile: mcp.dockerfile
+    image: schuyang/perplexica-mcp:latest
+    environment:
+      - MCP_SERVER_PORT=3100
+      - NODE_ENV=production
+    ports:
+      - 3100:3100
+    volumes:
+      - uploads:/app/uploads
+      - ./mcp-server.js:/app/mcp-server.js:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - perplexica-network
+    restart: unless-stopped
+
   perplexica-backend:
     build:
       context: .
       dockerfile: backend.dockerfile
-    image: itzcrazykns1337/perplexica-backend:main
+    image: schuyang/perplexica-backend:main
     environment:
       - SEARXNG_API_URL=http://searxng:8080
+      - MCP_SERVER_URL=http://perplexica-mcp:3100
+      - NODE_ENV=production
     depends_on:
       - searxng
+      - redis
+      - perplexica-mcp
     ports:
       - 3001:3001
     volumes:
@@ -30,6 +68,25 @@ services:
       - perplexica-network
     restart: unless-stopped
 
+  perplexica-python-cache:
+    build:
+      context: ./python_backend
+      dockerfile: Dockerfile
+    ports:
+      - 8000:8000
+    depends_on:
+      - searxng
+      - redis
+    volumes:
+      - ./python_backend:/app
+    environment:
+      - SEARXNG_API_URL=http://searxng:8080
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - perplexica-network
+    restart: unless-stopped
+
   perplexica-frontend:
     build:
       context: .
@@ -37,9 +94,13 @@ services:
       args:
         - NEXT_PUBLIC_API_URL=http://127.0.0.1:3001/api
         - NEXT_PUBLIC_WS_URL=ws://127.0.0.1:3001
-    image: itzcrazykns1337/perplexica-frontend:main
+        - NEXT_PUBLIC_PYTHON_API_URL=http://127.0.0.1:8000
+        - NEXT_PUBLIC_MCP_URL=http://127.0.0.1:3100/mcp
+    image: schuyang/perplexica-frontend:main
     depends_on:
       - perplexica-backend
+      - perplexica-python-cache
+      - perplexica-mcp
     ports:
       - 3000:3000
     networks:
@@ -52,3 +113,4 @@ networks:
 volumes:
   backend-dbstore:
   uploads:
+  redis-data:

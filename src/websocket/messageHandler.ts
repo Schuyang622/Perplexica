@@ -12,6 +12,7 @@ import MetaSearchAgent, {
   MetaSearchAgentType,
 } from '../search/metaSearchAgent';
 import prompts from '../prompts';
+import mcpClient from '../mcp/client';
 
 type Message = {
   messageId: string;
@@ -90,6 +91,8 @@ const handleEmitterEvents = (
   ws: WebSocket,
   messageId: string,
   chatId: string,
+  llm?: BaseChatModel,
+  history?: BaseMessage[],
 ) => {
   let recievedMessage = '';
   let sources = [];
@@ -101,37 +104,173 @@ const handleEmitterEvents = (
         JSON.stringify({
           type: 'message',
           data: parsedData.data,
-          messageId: messageId,
+          messageId,
         }),
       );
       recievedMessage += parsedData.data;
-    } else if (parsedData.type === 'sources') {
+    }
+
+    if (parsedData.type === 'sources') {
+      sources = [...sources, ...parsedData.data];
       ws.send(
         JSON.stringify({
           type: 'sources',
           data: parsedData.data,
-          messageId: messageId,
+          messageId,
         }),
       );
-      sources = parsedData.data;
     }
   });
-  emitter.on('end', () => {
-    ws.send(JSON.stringify({ type: 'messageEnd', messageId: messageId }));
 
-    db.insert(messagesSchema)
-      .values({
-        content: recievedMessage,
-        chatId: chatId,
-        messageId: messageId,
-        role: 'assistant',
-        metadata: JSON.stringify({
-          createdAt: new Date(),
-          ...(sources && sources.length > 0 && { sources }),
+  emitter.on('end', async () => {
+    try {
+      // 检查是否为文字转图片请求
+      const imageRequestResult = mcpClient.isTextToImageRequest(recievedMessage);
+      
+      // 如果包含图片生成请求，则进行处理
+      if (imageRequestResult.isImageRequest && llm) {
+        try {
+          // 通知用户正在处理
+          ws.send(
+            JSON.stringify({
+              type: 'message',
+              data: '正在生成内容并创建图片...',
+              messageId,
+            }),
+          );
+          
+          // 直接使用新方法生成内容并创建图片
+          const historyMessages = history || [];
+          const result = await mcpClient.generateContentAndCreateImage(
+            recievedMessage,
+            llm,
+            historyMessages,
+            { theme: 'light' }
+          );
+          
+          const mcpServerUrl = process.env.MCP_SERVER_URL || 'http://perplexica-mcp:3100';
+          
+          // 转换相对URL为完整URL
+          const fullImageUrl = result.imageData.imageUrl.startsWith('http') 
+            ? result.imageData.imageUrl 
+            : `${mcpServerUrl}${result.imageData.imageUrl}`;
+          const fullDownloadUrl = result.imageData.downloadUrl.startsWith('http')
+            ? result.imageData.downloadUrl
+            : `${mcpServerUrl}${result.imageData.downloadUrl}`;
+          
+          // 发送生成的内容
+          ws.send(
+            JSON.stringify({
+              type: 'message',
+              data: result.content,
+              messageId,
+            }),
+          );
+          
+          // 更新接收到的消息
+          recievedMessage = result.content;
+          
+          // 发送图片数据
+          ws.send(
+            JSON.stringify({
+              type: 'image',
+              data: {
+                imageUrl: fullImageUrl,
+                downloadUrl: fullDownloadUrl,
+                text: result.content
+              },
+              messageId,
+            }),
+          );
+          
+          // 记录图片信息到数据库
+          await db
+            .insert(messagesSchema)
+            .values({
+              content: recievedMessage,
+              chatId,
+              messageId,
+              role: 'assistant',
+              metadata: JSON.stringify({
+                createdAt: new Date(),
+                sources,
+                imageData: {
+                  imageUrl: fullImageUrl,
+                  downloadUrl: fullDownloadUrl,
+                  text: result.content
+                }
+              }),
+            })
+            .execute();
+            
+          // 向客户端发送完成消息
+          ws.send(
+            JSON.stringify({
+              type: 'messageEnd',
+              data: '图片已生成，可点击查看或下载。',
+              messageId,
+              sources,
+            }),
+          );
+          
+          return; // 图片处理完成，直接返回
+        } catch (error) {
+          logger.error('文字转图片失败:', error);
+          
+          // 发送错误消息
+          ws.send(
+            JSON.stringify({
+              type: 'message',
+              data: '生成图片过程中发生错误，将以文本形式回答。',
+              messageId,
+            }),
+          );
+        }
+      }
+
+      // 正常文本回复处理
+      ws.send(
+        JSON.stringify({
+          type: 'messageEnd',
+          data: '',
+          messageId,
+          sources,
         }),
-      })
-      .execute();
+      );
+
+      if (sources.length > 0) {
+        await db
+          .insert(messagesSchema)
+          .values({
+            content: recievedMessage,
+            chatId,
+            messageId,
+            role: 'assistant',
+            metadata: JSON.stringify({
+              createdAt: new Date(),
+              sources,
+            }),
+          })
+          .execute();
+      } else {
+        await db
+          .insert(messagesSchema)
+          .values({
+            content: recievedMessage,
+            chatId,
+            messageId,
+            role: 'assistant',
+            metadata: JSON.stringify({
+              createdAt: new Date(),
+            }),
+          })
+          .execute();
+      }
+    } catch (error) {
+      logger.error('Error inserting message:', error);
+    }
   });
+
   emitter.on('error', (data) => {
     const parsedData = JSON.parse(data);
     ws.send(
@@ -199,7 +338,7 @@ export const handleMessage = async (
             parsedWSMessage.files,
           );
 
-          handleEmitterEvents(emitter, ws, aiMessageId, parsedMessage.chatId);
+          handleEmitterEvents(emitter, ws, aiMessageId, parsedMessage.chatId, llm, history);
 
           const chat = await db.query.chats.findFirst({
             where: eq(chats.id, parsedMessage.chatId),

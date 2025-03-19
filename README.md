@@ -38,6 +38,7 @@
   - [Donations](#donations)
 - [Contribution](#contribution)
 - [Help and Support](#help-and-support)
+- [MCP 文字转图片功能](#mcp-文字转图片功能)
 
 ## Overview
 
@@ -192,3 +193,53 @@ Perplexica is built on the idea that AI and large language models should be easy
 If you have any questions or feedback, please feel free to reach out to us. You can create an issue on GitHub or join our Discord server. There, you can connect with other users, share your experiences and reviews, and receive more personalized help. [Click here](https://discord.gg/EFwsmQDgAu) to join the Discord server. To discuss matters outside of regular support, feel free to contact me on Discord at `itzcrazykns`.
 
 Thank you for exploring Perplexica, the AI-powered search engine designed to enhance your search experience. We are constantly working to improve Perplexica and expand its capabilities. We value your feedback and contributions which help us make Perplexica even better. Don't forget to check back for updates and new features!
+
+## MCP 文字转图片功能
+
+Perplexica现在支持使用MCP（Model Context Protocol）将文本回答转换为图片格式。
+
+### 功能说明
+
+- 当用户在对话中表达"将回答转为图片"、"生成图片"等意图时，Perplexica会自动调用MCP服务将回答转换为图片
+- 生成的图片会直接在对话界面中显示，并提供下载选项
+- 生成的图片具有美观的格式和样式，支持Markdown格式
+
+### 使用方法
+
+1. 向Perplexica提问获取文本回答
+2. 在新的对话中输入如下类似意图的提示：
+   - "请将上一个回答转为图片"
+   - "生成图片版本的回答"
+   - "把这个回答做成一张图片"
+3. Perplexica会自动识别这一意图，并调用MCP服务将文本转为图片
+4. 生成的图片会在对话界面中显示，您可以查看并下载
+
+### 实现原理
+
+1. **MCP Client**：在Node.js后端中实现，负责识别用户意图并调用MCP服务
+2. **MCP Server**：独立的服务器组件，使用SVG技术将文本渲染为图片
+3. **前端展示**：在对话界面中集成图片查看和下载功能
+
+### 技术架构
+
+```
++------------------+        +-------------------+        +------------------+
+|                  |        |                   |        |                  |
+|  Perplexica前端  | -----> |  Perplexica后端   | -----> |   MCP服务器      |
+|     (Next.js)    |        |    (Node.js)     |        |   (Express.js)   |
+|                  | <----- |                   | <----- |                  |
++------------------+        +-------------------+        +------------------+
+       |                            |                          |
+       |                            |                          |
+       v                            v                          v
+  展示图片结果                 处理WebSocket消息           生成SVG图片
+   提供下载功能                识别用户意图              处理文本格式化
+                               调用MCP Client
+```
+
+### 进一步开发
+
+- 支持更多图片格式（如PNG、JPG）
+- 增加更多主题样式选择
+- 支持表格和复杂代码格式
+- 集成更多高级文本布局选项

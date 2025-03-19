@@ -1,6 +1,6 @@
-import { Message } from '@/components/ChatWindow';
+import { ChatMessage } from '@/types';
 
-export const getSuggestions = async (chatHisory: Message[]) => {
+export const getSuggestions = async (chatHisory: ChatMessage[]) => {
   const chatModel = localStorage.getItem('chatModel');
   const chatModelProvider = localStorage.getItem('chatModelProvider');
 
